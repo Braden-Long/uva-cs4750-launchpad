@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Application, Status, STATUSES } from "@/lib/mock-data";
-import { X, Sparkles, Link, Plus, CalendarDays } from "lucide-react";
+import { X, Sparkles, Link, Plus, CalendarDays, FileText } from "lucide-react";
 
 type FormData = Omit<Application, "id">;
 
@@ -20,6 +20,10 @@ const empty = {
   salary_expectation: "",
   status: "Saved" as Status,
   notes: "",
+  job_type: "" as "" | "Internship" | "Full-time",
+  duration_months: "",
+  equity_offered: "",
+  sign_on_bonus: "",
 };
 
 function isoToDisplay(iso: string): string {
@@ -60,6 +64,10 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
           salary_expectation: editApp.salary_expectation ? String(editApp.salary_expectation) : "",
           status: editApp.status,
           notes: editApp.notes,
+          job_type: (editApp.job_type as "" | "Internship" | "Full-time") ?? "",
+          duration_months: editApp.duration_months ? String(editApp.duration_months) : "",
+          equity_offered: editApp.equity_offered ?? "",
+          sign_on_bonus: editApp.sign_on_bonus ? String(editApp.sign_on_bonus) : "",
         });
         setTags(editApp.tags);
         // Saved apps have NULL date in DB (API returns today as fallback), show empty so placeholder appears
@@ -104,6 +112,11 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
       job_url: form.job_url,
       notes: form.notes,
       tags,
+      job_type: (form.job_type as "Internship" | "Full-time") || null,
+      duration_months: form.job_type === "Internship" ? (Number(form.duration_months) || null) : null,
+      equity_offered: form.job_type === "Full-time" ? (form.equity_offered || null) : null,
+      sign_on_bonus: form.job_type === "Full-time" ? (Number(form.sign_on_bonus) || null) : null,
+      documents: editApp?.documents ?? [],
     });
     setSaving(false);
     onClose();
@@ -249,6 +262,58 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
             </div>
           </div>
 
+          {/* Job Type row — populates internship / full_time tables */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-muted mb-1.5">Job Type</label>
+              <select
+                value={form.job_type}
+                onChange={(e) => setForm({ ...form, job_type: e.target.value as "" | "Internship" | "Full-time" })}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+              >
+                <option value="">N/A</option>
+                <option value="Internship">Internship</option>
+                <option value="Full-time">Full-time</option>
+              </select>
+            </div>
+            {form.job_type === "Internship" && (
+              <div className="col-span-2">
+                <label className="block text-xs text-muted mb-1.5">Duration (months)</label>
+                <input
+                  type="number"
+                  value={form.duration_months}
+                  onChange={(e) => setForm({ ...form, duration_months: e.target.value })}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
+                  placeholder="3"
+                />
+              </div>
+            )}
+            {form.job_type === "Full-time" && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">Equity</label>
+                  <input
+                    type="text"
+                    value={form.equity_offered}
+                    onChange={(e) => setForm({ ...form, equity_offered: e.target.value })}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
+                    placeholder="100 RSUs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">Sign-on Bonus</label>
+                  <input
+                    type="number"
+                    value={form.sign_on_bonus}
+                    onChange={(e) => setForm({ ...form, sign_on_bonus: e.target.value })}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
+                    placeholder="10000"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs text-muted mb-1.5">Notes</label>
             <textarea
@@ -298,6 +363,21 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
               </button>
             </div>
           </div>
+
+          {isEdit && editApp?.documents && editApp.documents.length > 0 && (
+            <div>
+              <label className="block text-xs text-muted mb-1.5">Submitted Documents</label>
+              <div className="flex flex-wrap gap-1.5">
+                {editApp.documents.map((doc, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-zinc-500/15 text-zinc-400">
+                    <FileText size={10} />
+                    {doc.title}
+                    <span className="text-zinc-500">· {doc.doc_type}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted hover:text-foreground transition-colors">

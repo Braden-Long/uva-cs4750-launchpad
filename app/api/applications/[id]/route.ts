@@ -11,7 +11,8 @@ export async function PUT(
 
   const { id } = await params;
   const app_number = parseInt(id, 10);
-  const { company_name, job_title, status, date_applied, salary_expectation, notes, tags } =
+  const { company_name, job_title, status, date_applied, salary_expectation, notes, tags,
+          job_type, duration_months, equity_offered, sign_on_bonus } =
     await req.json();
 
   if (company_name) {
@@ -46,6 +47,21 @@ export async function PUT(
         [session.username, app_number, tag]
       );
     }
+  }
+
+  await db.query("DELETE FROM internship WHERE username = ? AND app_number = ?", [session.username, app_number]);
+  await db.query("DELETE FROM full_time WHERE username = ? AND app_number = ?", [session.username, app_number]);
+
+  if (job_type === "Internship") {
+    await db.query(
+      "INSERT INTO internship (username, app_number, duration_months) VALUES (?, ?, ?)",
+      [session.username, app_number, duration_months || null]
+    );
+  } else if (job_type === "Full-time") {
+    await db.query(
+      "INSERT INTO full_time (username, app_number, equity_offered, sign_on_bonus) VALUES (?, ?, ?, ?)",
+      [session.username, app_number, equity_offered || null, sign_on_bonus || null]
+    );
   }
 
   return NextResponse.json({ ok: true });

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Rocket, Plus, Search, ArrowUpDown, BarChart3, Kanban,
-  Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut,
+  Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut, Users,
 } from "lucide-react";
 import { Application, Status, STATUSES, STATUS_COLORS } from "@/lib/mock-data";
 import StatusColumn from "@/components/StatusColumn";
@@ -27,6 +27,7 @@ export default function Home() {
   const router = useRouter();
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recruiters, setRecruiters] = useState<{ recruiter_id: number; first_name: string; last_name: string; email: string; company_name: string }[]>([]);
   const [user, setUser] = useState<{ username: string; first_name: string; last_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("dashboard");
@@ -37,12 +38,14 @@ export default function Home() {
   const [editApp, setEditApp] = useState<Application | null>(null);
 
   const fetchData = useCallback(async () => {
-    const [appsRes, dashRes] = await Promise.all([
+    const [appsRes, dashRes, recRes] = await Promise.all([
       fetch("/api/applications"),
       fetch("/api/dashboard"),
+      fetch("/api/recruiters"),
     ]);
     if (appsRes.ok) setApplications(await appsRes.json());
     if (dashRes.ok) setStats(await dashRes.json());
+    if (recRes.ok) setRecruiters(await recRes.json());
   }, []);
 
   useEffect(() => {
@@ -357,6 +360,30 @@ export default function Home() {
                 </div>
               )}
             </div>
+
+            {/* Recruiter Network */}
+            {recruiters.length > 0 && (
+              <div className="bg-card border border-border rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Users size={14} className="text-muted" />
+                  <h3 className="text-sm font-semibold">Recruiter Network</h3>
+                  <span className="ml-auto text-xs text-muted">{recruiters.length} contact{recruiters.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {recruiters.map((r) => (
+                    <div key={r.recruiter_id} className="flex flex-col gap-0.5 p-2.5 rounded-lg bg-background border border-border">
+                      <span className="text-xs font-medium truncate">{r.first_name} {r.last_name}</span>
+                      <span className="text-[11px] text-muted truncate">{r.company_name}</span>
+                      {r.email && (
+                        <a href={`mailto:${r.email}`} className="text-[11px] text-accent/80 hover:text-accent truncate transition-colors">
+                          {r.email}
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* ===== KANBAN VIEW ===== */

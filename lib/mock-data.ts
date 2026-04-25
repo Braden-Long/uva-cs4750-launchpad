@@ -10,6 +10,11 @@ export interface Application {
   job_url: string;
   notes: string;
   tags: string[];
+  job_type?: "Internship" | "Full-time" | null;
+  duration_months?: number | null;
+  equity_offered?: string | null;
+  sign_on_bonus?: number | null;
+  documents?: { title: string; doc_type: string }[];
 }
 
 export interface User {
