@@ -8,9 +8,11 @@ interface StatusColumnProps {
   applications: Application[];
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDrop: (e: React.DragEvent, status: Status) => void;
+  onEdit: (app: Application) => void;
+  onDelete: (id: string) => void;
 }
 
-export default function StatusColumn({ status, applications, onDragStart, onDrop }: StatusColumnProps) {
+export default function StatusColumn({ status, applications, onDragStart, onDrop, onEdit, onDelete }: StatusColumnProps) {
   return (
     <div
       className="flex flex-col min-w-[260px] w-[260px] shrink-0"
@@ -25,7 +27,13 @@ export default function StatusColumn({ status, applications, onDragStart, onDrop
       </div>
       <div className="flex flex-col gap-2 flex-1 p-1 rounded-lg border border-transparent hover:border-border/50 transition-colors min-h-[120px]">
         {applications.map((app) => (
-          <ApplicationCard key={app.id} application={app} onDragStart={onDragStart} />
+          <ApplicationCard
+            key={app.id}
+            application={app}
+            onDragStart={onDragStart}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
         ))}
       </div>
     </div>

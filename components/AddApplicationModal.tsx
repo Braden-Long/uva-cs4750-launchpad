@@ -1,47 +1,112 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, Status, STATUSES } from "@/lib/mock-data";
-import { X, Sparkles, Link, Plus } from "lucide-react";
+import { X, Sparkles, Link, Plus, CalendarDays } from "lucide-react";
+
+type FormData = Omit<Application, "id">;
 
 interface AddApplicationModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (app: Application) => void;
+  onSave: (data: FormData) => Promise<void>;
+  editApp?: Application | null;
 }
 
-export default function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModalProps) {
-  const [form, setForm] = useState({
-    company_name: "",
-    job_title: "",
-    job_url: "",
-    salary_expectation: "",
-    status: "Saved" as Status,
-    notes: "",
-  });
+const empty = {
+  company_name: "",
+  job_title: "",
+  job_url: "",
+  salary_expectation: "",
+  status: "Saved" as Status,
+  notes: "",
+};
+
+function isoToDisplay(iso: string): string {
+  if (!iso) return "";
+  const parts = iso.split("-");
+  if (parts.length !== 3) return "";
+  return `${parts[1]}/${parts[2]}/${parts[0]}`;
+}
+
+function displayToISO(display: string): string {
+  const parts = display.split("/");
+  if (parts.length === 3 && parts[2].length === 4) {
+    return `${parts[2]}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
+  }
+  return new Date().toISOString().split("T")[0];
+}
+
+export default function AddApplicationModal({ open, onClose, onSave, editApp }: AddApplicationModalProps) {
+  const today = new Date();
+  const todayISO = today.toISOString().split("T")[0];
+  const todayDisplay = `${String(today.getMonth() + 1).padStart(2, "0")}/${String(today.getDate()).padStart(2, "0")}/${today.getFullYear()}`;
+
+  const [form, setForm] = useState(empty);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [dateInput, setDateInput] = useState("");
   const [autoFilling, setAutoFilling] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const datePickerRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (editApp) {
+        setForm({
+          company_name: editApp.company_name,
+          job_title: editApp.job_title,
+          job_url: editApp.job_url,
+          salary_expectation: editApp.salary_expectation ? String(editApp.salary_expectation) : "",
+          status: editApp.status,
+          notes: editApp.notes,
+        });
+        setTags(editApp.tags);
+        // Saved apps have NULL date in DB (API returns today as fallback), show empty so placeholder appears
+        setDateInput(editApp.status === "Saved" ? "" : isoToDisplay(editApp.date_applied));
+      } else {
+        setForm(empty);
+        setTags([]);
+        setDateInput("");
+      }
+      setTagInput("");
+    }
+  }, [open, editApp]);
 
   if (!open) return null;
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleDateTyping(val: string) {
+    if (val.length < dateInput.length) {
+      // Backspace — allow deletion, strip any trailing slash left behind
+      setDateInput(val.replace(/\/$/, ""));
+      return;
+    }
+    const digits = val.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setDateInput(formatted);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onAdd({
-      id: `app-${Date.now()}`,
+    setSaving(true);
+    const isoDate = dateInput.length === 10 ? displayToISO(dateInput) : todayISO;
+    await onSave({
       company_name: form.company_name,
       job_title: form.job_title,
       status: form.status,
-      date_applied: new Date().toISOString().split("T")[0],
+      date_applied: isoDate,
       salary_expectation: Number(form.salary_expectation) || 0,
       job_url: form.job_url,
       notes: form.notes,
       tags,
     });
+    setSaving(false);
     onClose();
-    setForm({ company_name: "", job_title: "", job_url: "", salary_expectation: "", status: "Saved", notes: "" });
-    setTags([]);
-    setTagInput("");
   }
 
   function handleAutoFill() {
@@ -57,19 +122,21 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
     }, 1500);
   }
 
+  const isEdit = !!editApp;
+  const pickerValue = dateInput.length === 10 ? displayToISO(dateInput) : todayISO;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl w-full max-w-lg p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold">Add Application</h2>
+          <h2 className="text-lg font-semibold">{isEdit ? "Edit Application" : "Add Application"}</h2>
           <button onClick={onClose} className="text-muted hover:text-foreground transition-colors">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* URL + Autofill */}
           <div>
             <label className="block text-xs text-muted mb-1.5">Job URL</label>
             <div className="flex gap-2">
@@ -83,15 +150,17 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
                   className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
                 />
               </div>
-              <button
-                type="button"
-                onClick={handleAutoFill}
-                disabled={autoFilling}
-                className="flex items-center gap-1.5 px-3 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
-              >
-                <Sparkles size={13} className={autoFilling ? "animate-spin" : ""} />
-                {autoFilling ? "Fetching..." : "Auto-fill from URL"}
-              </button>
+              {!isEdit && (
+                <button
+                  type="button"
+                  onClick={handleAutoFill}
+                  disabled={autoFilling}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles size={13} className={autoFilling ? "animate-spin" : ""} />
+                  {autoFilling ? "Fetching..." : "Auto-fill from URL"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -118,7 +187,7 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-muted mb-1.5">Expected Salary</label>
               <input
@@ -128,6 +197,43 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
                 placeholder="120000"
               />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1.5">
+                Date Applied
+                {form.status === "Saved" && (
+                  <span className="ml-1 text-muted/50 font-normal">(n/a)</span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={form.status === "Saved" ? "" : dateInput}
+                  onChange={(e) => handleDateTyping(e.target.value)}
+                  placeholder={form.status === "Saved" ? "Not yet applied" : todayDisplay}
+                  maxLength={10}
+                  disabled={form.status === "Saved"}
+                  className="w-full bg-background border border-border rounded-lg pl-3 pr-8 py-2 text-sm placeholder:text-muted/40 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+                />
+                {/* Label click forwards to the date input, opening the native picker */}
+                <label
+                  className={`absolute right-0 top-0 bottom-0 w-8 flex items-center justify-center transition-colors ${form.status === "Saved" ? "opacity-30 cursor-not-allowed pointer-events-none" : "cursor-pointer text-muted hover:text-accent"}`}
+                  onClick={() => {
+                    if (datePickerRef.current) datePickerRef.current.value = pickerValue;
+                  }}
+                >
+                  <CalendarDays size={14} className="pointer-events-none" />
+                  <input
+                    ref={datePickerRef}
+                    type="date"
+                    disabled={form.status === "Saved"}
+                    className="absolute inset-0 opacity-0 cursor-pointer disabled:pointer-events-none"
+                    onChange={(e) => {
+                      if (e.target.value) setDateInput(isoToDisplay(e.target.value));
+                    }}
+                  />
+                </label>
+              </div>
             </div>
             <div>
               <label className="block text-xs text-muted mb-1.5">Status</label>
@@ -154,21 +260,13 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
             />
           </div>
 
-          {/* Tags */}
           <div>
             <label className="block text-xs text-muted mb-1.5">Tags</label>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-accent/15 text-accent"
-                >
+                <span key={tag} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-accent/15 text-accent">
                   {tag}
-                  <button
-                    type="button"
-                    onClick={() => setTags(tags.filter((t) => t !== tag))}
-                    className="hover:text-foreground"
-                  >
+                  <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-foreground">
                     <X size={10} />
                   </button>
                 </span>
@@ -181,9 +279,7 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && tagInput.trim()) {
                     e.preventDefault();
-                    if (!tags.includes(tagInput.trim())) {
-                      setTags([...tags, tagInput.trim()]);
-                    }
+                    if (!tags.includes(tagInput.trim())) setTags([...tags, tagInput.trim()]);
                     setTagInput("");
                   }
                 }}
@@ -193,9 +289,7 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
               <button
                 type="button"
                 onClick={() => {
-                  if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-                    setTags([...tags, tagInput.trim()]);
-                  }
+                  if (tagInput.trim() && !tags.includes(tagInput.trim())) setTags([...tags, tagInput.trim()]);
                   setTagInput("");
                 }}
                 className="px-2 py-1.5 bg-background border border-border rounded-lg text-muted hover:text-foreground hover:border-accent/40 transition-colors"
@@ -209,8 +303,12 @@ export default function AddApplicationModal({ open, onClose, onAdd }: AddApplica
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted hover:text-foreground transition-colors">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors">
-              Add Application
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {saving ? "Saving..." : isEdit ? "Save Changes" : "Add Application"}
             </button>
           </div>
         </form>

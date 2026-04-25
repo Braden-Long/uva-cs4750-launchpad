@@ -1,20 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Rocket,
-  Plus,
-  Search,
-  ArrowUpDown,
-  BarChart3,
-  Kanban,
-  Settings,
-  Briefcase,
-  TrendingUp,
-  Clock,
-  CalendarDays,
+  Rocket, Plus, Search, ArrowUpDown, BarChart3, Kanban,
+  Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut,
 } from "lucide-react";
-import { Application, Status, STATUSES, STATUS_COLORS, initialApplications, currentUser } from "@/lib/mock-data";
+import { Application, Status, STATUSES, STATUS_COLORS } from "@/lib/mock-data";
 import StatusColumn from "@/components/StatusColumn";
 import AddApplicationModal from "@/components/AddApplicationModal";
 import SettingsPanel from "@/components/SettingsPanel";
@@ -22,17 +14,52 @@ import SettingsPanel from "@/components/SettingsPanel";
 type View = "dashboard" | "kanban";
 type SortOption = "date" | "salary" | "company";
 
+interface DashboardStats {
+  total: number;
+  responseRate: number;
+  pendingInterviews: number;
+  offers: number;
+  weekly: Array<{ date: string; count: number }>;
+  pipeline: Array<{ status: string; count: number }>;
+}
+
 export default function Home() {
-  const [applications, setApplications] = useState<Application[]>(initialApplications);
+  const router = useRouter();
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [user, setUser] = useState<{ username: string; first_name: string; last_name: string } | null>(null);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("dashboard");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("date");
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [editApp, setEditApp] = useState<Application | null>(null);
 
-  // Derived data
+  const fetchData = useCallback(async () => {
+    const [appsRes, dashRes] = await Promise.all([
+      fetch("/api/applications"),
+      fetch("/api/dashboard"),
+    ]);
+    if (appsRes.ok) setApplications(await appsRes.json());
+    if (dashRes.ok) setStats(await dashRes.json());
+  }, []);
+
+  useEffect(() => {
+    async function init() {
+      const meRes = await fetch("/api/auth/me");
+      if (!meRes.ok) { router.push("/login"); return; }
+      const { user: me } = await meRes.json();
+      setUser(me);
+      await fetchData();
+      setLoading(false);
+    }
+    init();
+  }, [router, fetchData]);
+
+  // Derived / filtered
   const filtered = useMemo(() => {
-    let apps = applications;
+    let apps = [...applications];
     if (search) {
       const q = search.toLowerCase();
       apps = apps.filter(
@@ -42,45 +69,120 @@ export default function Home() {
     return apps.sort((a, b) => {
       if (sort === "salary") return b.salary_expectation - a.salary_expectation;
       if (sort === "company") return a.company_name.localeCompare(b.company_name);
-      return new Date(b.date_applied).getTime() - new Date(a.date_applied).getTime();
+      const ta = a.date_applied ? new Date(a.date_applied + "T00:00:00").getTime() : 0;
+      const tb = b.date_applied ? new Date(b.date_applied + "T00:00:00").getTime() : 0;
+      return tb - ta;
     });
   }, [applications, search, sort]);
 
   const byStatus = (status: Status) => filtered.filter((a) => a.status === status);
 
-  // Stats
-  const totalApplied = applications.filter((a) => a.status !== "Saved").length;
-  const responseRate = totalApplied
-    ? Math.round(
-        (applications.filter((a) => ["Interviewing", "Offer", "Rejected"].includes(a.status)).length /
-          totalApplied) *
-          100
-      )
-    : 0;
-  const pendingInterviews = applications.filter((a) => a.status === "Interviewing").length;
-  const offers = applications.filter((a) => a.status === "Offer").length;
+  // Summary stats (use API stats when available, fall back to local)
+  const totalApps = stats?.total ?? applications.length;
+  const responseRate = stats?.responseRate ?? 0;
+  const pendingInterviews = stats?.pendingInterviews ?? applications.filter((a) => a.status === "Interviewing").length;
+  const offers = stats?.offers ?? applications.filter((a) => a.status === "Offer").length;
 
-  // Weekly activity (mock)
-  const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const weekActivity = [3, 1, 2, 0, 4, 1, 2];
+  // Weekly chart — last 9 Monday-anchored weeks to cover older data
+  const last9Weeks = (() => {
+    const today = new Date();
+    const day = today.getDay(); // 0=Sun … 6=Sat
+    const daysToMonday = day === 0 ? 6 : day - 1;
+    const thisMonday = new Date(today);
+    thisMonday.setDate(today.getDate() - daysToMonday);
+    thisMonday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 9 }, (_, i) => {
+      const w = new Date(thisMonday);
+      w.setDate(thisMonday.getDate() - (8 - i) * 7);
+      return w.toISOString().split("T")[0];
+    });
+  })();
+  const weeklyMap = new Map((stats?.weekly ?? []).map((w) => [w.date, w.count]));
+  const weekActivity = last9Weeks.map((d) => weeklyMap.get(d) ?? 0);
+  const dayLabels = last9Weeks.map((d) =>
+    new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  );
   const maxActivity = Math.max(...weekActivity, 1);
 
   // Recent activity
   const recent = [...applications]
-    .sort((a, b) => new Date(b.date_applied).getTime() - new Date(a.date_applied).getTime())
+    .filter((a) => a.date_applied)
+    .sort((a, b) => new Date(b.date_applied + "T00:00:00").getTime() - new Date(a.date_applied + "T00:00:00").getTime())
     .slice(0, 5);
+
+  // Pipeline from DB stats (or computed from local state)
+  const pipelineCounts: Record<string, number> = {};
+  if (stats?.pipeline.length) {
+    for (const p of stats.pipeline) pipelineCounts[p.status] = p.count;
+  } else {
+    for (const s of STATUSES) pipelineCounts[s] = applications.filter((a) => a.status === s).length;
+  }
 
   // Drag handlers
   function onDragStart(e: React.DragEvent, id: string) {
     e.dataTransfer.setData("text/plain", id);
   }
-  function onDrop(e: React.DragEvent, newStatus: Status) {
+  async function onDrop(e: React.DragEvent, newStatus: Status) {
     const id = e.dataTransfer.getData("text/plain");
+    const app = applications.find((a) => a.id === id);
+    if (!app || app.status === newStatus) return;
     setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, status: newStatus } : a)));
+    await fetch(`/api/applications/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...app, status: newStatus }),
+    });
+    fetch("/api/dashboard").then((r) => r.json()).then(setStats);
   }
 
-  function handleAdd(app: Application) {
-    setApplications((prev) => [app, ...prev]);
+  // CRUD handlers
+  async function handleSave(data: Omit<Application, "id">) {
+    if (editApp) {
+      await fetch(`/api/applications/${editApp.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      setApplications((prev) =>
+        prev.map((a) => (a.id === editApp.id ? { ...a, ...data } : a))
+      );
+    } else {
+      const res = await fetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const newApp: Application = await res.json();
+        setApplications((prev) => [newApp, ...prev]);
+      }
+    }
+    fetch("/api/dashboard").then((r) => r.json()).then(setStats);
+    setEditApp(null);
+  }
+
+  async function handleDelete(id: string) {
+    await fetch(`/api/applications/${id}`, { method: "DELETE" });
+    setApplications((prev) => prev.filter((a) => a.id !== id));
+    fetch("/api/dashboard").then((r) => r.json()).then(setStats);
+  }
+
+  function openEdit(app: Application) {
+    setEditApp(app);
+    setShowModal(true);
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted text-sm">Loading...</div>
+      </div>
+    );
   }
 
   return (
@@ -91,7 +193,11 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Rocket size={20} className="text-accent" />
             <span className="font-semibold text-base">Launchpad</span>
-            <span className="text-xs text-muted ml-1 hidden sm:inline">/ {currentUser.name}</span>
+            {user && (
+              <span className="text-xs text-muted ml-1 hidden sm:inline">
+                / {user.first_name} {user.last_name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -116,11 +222,19 @@ export default function Home() {
             <button
               onClick={() => setShowSettings(true)}
               className="p-1.5 text-muted hover:text-foreground transition-colors"
+              title="Settings"
             >
               <Settings size={16} />
             </button>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleLogout}
+              className="p-1.5 text-muted hover:text-foreground transition-colors"
+              title="Sign out"
+            >
+              <LogOut size={16} />
+            </button>
+            <button
+              onClick={() => { setEditApp(null); setShowModal(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-md text-xs font-medium transition-colors ml-1"
             >
               <Plus size={14} />
@@ -137,7 +251,7 @@ export default function Home() {
             {/* Summary Cards */}
             <div className="grid grid-cols-4 gap-4">
               {[
-                { label: "Total Applications", value: applications.length, icon: Briefcase, color: "text-blue-400" },
+                { label: "Total Applications", value: totalApps, icon: Briefcase, color: "text-blue-400" },
                 { label: "Response Rate", value: `${responseRate}%`, icon: TrendingUp, color: "text-emerald-400" },
                 { label: "Pending Interviews", value: pendingInterviews, icon: Clock, color: "text-amber-400" },
                 { label: "Active Offers", value: offers, icon: CalendarDays, color: "text-violet-400" },
@@ -152,22 +266,35 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               {/* Activity Chart */}
-              <div className="col-span-2 bg-card border border-border rounded-xl p-5">
-                <h3 className="text-sm font-semibold mb-4">Applications This Week</h3>
-                <div className="flex items-end gap-3 h-32">
-                  {weekDays.map((day, i) => (
-                    <div key={day} className="flex-1 flex flex-col items-center gap-1.5">
-                      <div className="w-full relative flex justify-center" style={{ height: 100 }}>
-                        <div
-                          className="w-8 bg-accent/70 rounded-t-md absolute bottom-0 transition-all"
-                          style={{ height: `${(weekActivity[i] / maxActivity) * 100}%` }}
-                        />
+              <div className="col-span-3 bg-card border border-border rounded-xl p-5 flex flex-col">
+                <h3 className="text-sm font-semibold mb-4">Weekly Activity</h3>
+                <div className="flex items-end gap-1.5 flex-1">
+                  {last9Weeks.map((weekStart, i) => {
+                    const barPx = weekActivity[i] > 0
+                      ? Math.max(6, Math.round((weekActivity[i] / maxActivity) * 80))
+                      : 0;
+                    return (
+                      <div key={weekStart} className="flex-1 flex flex-col items-center">
+                        <div className="relative w-full flex justify-center" style={{ height: 100 }}>
+                          <div
+                            className="w-full max-w-[24px] bg-accent/70 rounded-t-sm absolute bottom-0 transition-all"
+                            style={{ height: barPx }}
+                          />
+                          {weekActivity[i] > 0 && (
+                            <span
+                              className="absolute text-[10px] font-medium text-accent leading-none"
+                              style={{ bottom: barPx + 5 }}
+                            >
+                              {weekActivity[i]}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted mt-3 whitespace-nowrap">{dayLabels[i]}</span>
                       </div>
-                      <span className="text-[10px] text-muted">{day}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -176,8 +303,8 @@ export default function Home() {
                 <h3 className="text-sm font-semibold mb-4">Pipeline Breakdown</h3>
                 <div className="space-y-3">
                   {STATUSES.map((status) => {
-                    const count = applications.filter((a) => a.status === status).length;
-                    const pct = applications.length ? (count / applications.length) * 100 : 0;
+                    const count = pipelineCounts[status] ?? 0;
+                    const pct = totalApps ? (count / totalApps) * 100 : 0;
                     return (
                       <div key={status}>
                         <div className="flex items-center justify-between mb-1">
@@ -202,35 +329,38 @@ export default function Home() {
             {/* Recent Activity */}
             <div className="bg-card border border-border rounded-xl p-5">
               <h3 className="text-sm font-semibold mb-4">Recent Activity</h3>
-              <div className="divide-y divide-border">
-                {recent.map((app) => (
-                  <div key={app.id} className="flex items-center justify-between py-2.5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-xs font-bold text-accent">
-                        {app.company_name.charAt(0)}
+              {recent.length === 0 ? (
+                <p className="text-sm text-muted">No applications yet. Add your first job!</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {recent.map((app) => (
+                    <div key={app.id} className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-xs font-bold text-accent">
+                          {app.company_name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{app.company_name}</p>
+                          <p className="text-xs text-muted">{app.job_title}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium">{app.company_name}</p>
-                        <p className="text-xs text-muted">{app.job_title}</p>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded ${STATUS_COLORS[app.status as Status] ?? ""}`}>
+                          {app.status}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {new Date(app.date_applied + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs px-2 py-0.5 rounded ${STATUS_COLORS[app.status]}`}>
-                        {app.status}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {new Date(app.date_applied).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : (
           /* ===== KANBAN VIEW ===== */
           <div>
-            {/* Controls */}
             <div className="flex items-center gap-3 mb-5">
               <div className="relative flex-1 max-w-xs">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -255,7 +385,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Columns */}
             <div className="flex gap-4 overflow-x-auto pb-4">
               {STATUSES.map((status) => (
                 <StatusColumn
@@ -264,6 +393,8 @@ export default function Home() {
                   applications={byStatus(status)}
                   onDragStart={onDragStart}
                   onDrop={onDrop}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
@@ -271,13 +402,17 @@ export default function Home() {
         )}
       </main>
 
-      {/* Modals */}
-      <AddApplicationModal open={showAddModal} onClose={() => setShowAddModal(false)} onAdd={handleAdd} />
+      <AddApplicationModal
+        open={showModal}
+        onClose={() => { setShowModal(false); setEditApp(null); }}
+        onSave={handleSave}
+        editApp={editApp}
+      />
       <SettingsPanel
         open={showSettings}
         onClose={() => setShowSettings(false)}
         applications={applications}
-        onClearAll={() => setApplications([])}
+        onRefresh={fetchData}
       />
     </div>
   );

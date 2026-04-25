@@ -1,39 +1,66 @@
 "use client";
 
-import { X, Download, Upload, Trash2, FileJson, FileSpreadsheet, Linkedin } from "lucide-react";
+import { useRef } from "react";
+import { X, Upload, Trash2, FileJson, FileSpreadsheet } from "lucide-react";
 import { Application } from "@/lib/mock-data";
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
   applications: Application[];
-  onClearAll: () => void;
+  onRefresh: () => Promise<void>;
 }
 
-export default function SettingsPanel({ open, onClose, applications, onClearAll }: SettingsPanelProps) {
+export default function SettingsPanel({ open, onClose, applications, onRefresh }: SettingsPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!open) return null;
 
-  function exportCSV() {
-    const headers = "Company,Title,Status,Date Applied,Salary,URL,Notes";
-    const rows = applications.map((a) =>
-      [a.company_name, a.job_title, a.status, a.date_applied, a.salary_expectation, a.job_url, `"${a.notes}"`].join(",")
-    );
-    const csv = [headers, ...rows].join("\n");
-    downloadFile(csv, "launchpad-export.csv", "text/csv");
-  }
-
-  function exportJSON() {
-    downloadFile(JSON.stringify(applications, null, 2), "launchpad-export.json", "application/json");
-  }
-
-  function downloadFile(content: string, filename: string, type: string) {
-    const blob = new Blob([content], { type });
+  async function exportCSV() {
+    const res = await fetch("/api/export");
+    if (!res.ok) return;
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = "launchpad-export.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportJSON() {
+    const content = JSON.stringify(applications, null, 2);
+    const blob = new Blob([content], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "launchpad-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const res = await fetch("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "text/csv" },
+      body: text,
+    });
+    if (res.ok) {
+      const { imported } = await res.json();
+      await onRefresh();
+      alert(`Imported ${imported} application${imported !== 1 ? "s" : ""}.`);
+    }
+    e.target.value = "";
+  }
+
+  async function handleClearAll() {
+    if (!confirm("Delete all your application data? This cannot be undone.")) return;
+    await fetch("/api/applications", { method: "DELETE" });
+    await onRefresh();
+    onClose();
   }
 
   return (
@@ -48,7 +75,6 @@ export default function SettingsPanel({ open, onClose, applications, onClearAll 
         </div>
 
         <div className="space-y-6">
-          {/* Export */}
           <div>
             <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Export</h3>
             <div className="grid grid-cols-2 gap-2">
@@ -69,32 +95,26 @@ export default function SettingsPanel({ open, onClose, applications, onClearAll 
             </div>
           </div>
 
-          {/* Import */}
           <div>
             <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Import</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <button className="flex items-center gap-2 px-3 py-2.5 bg-background border border-border rounded-lg text-sm hover:border-accent/40 transition-colors">
-                <Upload size={15} className="text-blue-400" />
-                Import CSV
-              </button>
-              <button className="flex items-center gap-2 px-3 py-2.5 bg-background border border-border rounded-lg text-sm hover:border-accent/40 transition-colors">
-                <Linkedin size={15} className="text-blue-400" />
-                From LinkedIn
-              </button>
-            </div>
+            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2.5 bg-background border border-border rounded-lg text-sm hover:border-accent/40 transition-colors w-full"
+            >
+              <Upload size={15} className="text-blue-400" />
+              Import CSV
+            </button>
+            <p className="text-xs text-muted mt-1.5">
+              CSV must have columns: Company, Title, Status, Date Applied, Salary, Notes, Tags (pipe-separated)
+            </p>
           </div>
 
-          {/* Danger Zone */}
           <div className="border-t border-border pt-5">
-            <h3 className="text-xs font-semibold text-danger uppercase tracking-wider mb-3">Danger Zone</h3>
+            <h3 className="text-xs font-semibold text-[var(--danger)] uppercase tracking-wider mb-3">Danger Zone</h3>
             <button
-              onClick={() => {
-                if (confirm("Are you sure you want to delete all application data? This cannot be undone.")) {
-                  onClearAll();
-                  onClose();
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-2.5 bg-danger/10 border border-danger/20 rounded-lg text-sm text-danger hover:bg-danger/20 transition-colors w-full"
+              onClick={handleClearAll}
+              className="flex items-center gap-2 px-3 py-2.5 bg-[var(--danger)]/10 border border-[var(--danger)]/20 rounded-lg text-sm text-[var(--danger)] hover:bg-[var(--danger)]/20 transition-colors w-full"
             >
               <Trash2 size={15} />
               Delete All Data
