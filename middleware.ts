@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "launchpad-cs4750-uva-secret-key-2026"
-);
+import { getJwtSecret } from "@/lib/jwt-secret";
 
 const publicPaths = ["/login", "/register"];
 
@@ -18,8 +15,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Resolved outside the try so a misconfigured JWT_SECRET fails loudly instead
+  // of silently downgrading every request to "logged out".
+  const secret = getJwtSecret();
+
   try {
-    await jwtVerify(token, SECRET);
+    await jwtVerify(token, secret);
     if (isPublic) return NextResponse.redirect(new URL("/", request.url));
     return NextResponse.next();
   } catch {

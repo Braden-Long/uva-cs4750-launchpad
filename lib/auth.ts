@@ -1,9 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "launchpad-cs4750-uva-secret-key-2026"
-);
+import { getJwtSecret } from "@/lib/jwt-secret";
 
 export interface SessionUser {
   username: string;
@@ -15,12 +12,15 @@ export async function signToken(user: SessionUser): Promise<string> {
   return new SignJWT({ ...user })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("7d")
-    .sign(SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<SessionUser | null> {
+  // Resolved outside the try so a misconfigured JWT_SECRET surfaces as an error
+  // rather than being swallowed and read as "invalid token".
+  const secret = getJwtSecret();
   try {
-    const { payload } = await jwtVerify(token, SECRET);
+    const { payload } = await jwtVerify(token, secret);
     return payload as unknown as SessionUser;
   } catch {
     return null;
