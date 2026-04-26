@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Rocket, Plus, Search, ArrowUpDown, BarChart3, Kanban,
-  Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut, Users,
+  Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut, Users, Pencil, Trash2,
 } from "lucide-react";
 import { Application, Status, STATUSES, STATUS_COLORS } from "@/lib/mock-data";
 import StatusColumn from "@/components/StatusColumn";
@@ -36,6 +36,12 @@ export default function Home() {
   const [showModal, setShowModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editApp, setEditApp] = useState<Application | null>(null);
+  const [showAddRecruiter, setShowAddRecruiter] = useState(false);
+  const [editingRecruiter, setEditingRecruiter] = useState<{ recruiter_id: number; first_name: string; last_name: string; email: string; company_name: string } | null>(null);
+  const [recruiterForm, setRecruiterForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
+  const [recruiterTouched, setRecruiterTouched] = useState<Record<string, boolean>>({});
+  const [recruiterError, setRecruiterError] = useState("");
+  const [recruiterSaving, setRecruiterSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     const [appsRes, dashRes, recRes] = await Promise.all([
@@ -178,6 +184,92 @@ export default function Home() {
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
+  }
+
+  function validateRecruiterField(name: string, value: string): string {
+    switch (name) {
+      case "first_name":
+      case "last_name":
+        if (!value.trim()) return "Required";
+        if (value.trim().length < 2) return "At least 2 characters";
+        if (!/^[a-zA-Z\s'\-]+$/.test(value.trim())) return "Letters only";
+        return "";
+      case "email":
+        if (!value.trim()) return "Required";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Invalid email address";
+        return "";
+      case "company_name":
+        if (!value.trim()) return "Required";
+        if (value.trim().length < 2) return "At least 2 characters";
+        return "";
+      default:
+        return "";
+    }
+  }
+
+  const recruiterFieldErrors = Object.fromEntries(
+    Object.keys(recruiterForm).map((k) => [k, validateRecruiterField(k, recruiterForm[k as keyof typeof recruiterForm])])
+  );
+  const recruiterFormValid = Object.values(recruiterFieldErrors).every((e) => e === "");
+
+  function openAddRecruiter() {
+    setEditingRecruiter(null);
+    setRecruiterForm({ first_name: "", last_name: "", email: "", company_name: "" });
+    setRecruiterTouched({});
+    setRecruiterError("");
+    setShowAddRecruiter(true);
+  }
+
+  function openEditRecruiter(r: typeof recruiters[0]) {
+    setEditingRecruiter(r);
+    setRecruiterForm({ first_name: r.first_name, last_name: r.last_name, email: r.email, company_name: r.company_name });
+    setRecruiterTouched({});
+    setRecruiterError("");
+    setShowAddRecruiter(true);
+  }
+
+  function closeRecruiterForm() {
+    setShowAddRecruiter(false);
+    setEditingRecruiter(null);
+    setRecruiterTouched({});
+    setRecruiterError("");
+  }
+
+  async function handleSaveRecruiter(e: React.FormEvent) {
+    e.preventDefault();
+    setRecruiterTouched({ first_name: true, last_name: true, email: true, company_name: true });
+    if (!recruiterFormValid) return;
+    setRecruiterSaving(true);
+    setRecruiterError("");
+    try {
+      const url = editingRecruiter ? `/api/recruiters/${editingRecruiter.recruiter_id}` : "/api/recruiters";
+      const method = editingRecruiter ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(recruiterForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (editingRecruiter) {
+          setRecruiters((prev) => prev.map((r) => r.recruiter_id === editingRecruiter.recruiter_id ? data : r));
+        } else {
+          setRecruiters((prev) => [...prev, data]);
+        }
+        closeRecruiterForm();
+      } else {
+        setRecruiterError(data.error ?? "Failed to save recruiter");
+      }
+    } catch {
+      setRecruiterError("An unexpected error occurred. Please try again.");
+    }
+    setRecruiterSaving(false);
+  }
+
+  async function handleDeleteRecruiter(recruiter_id: number) {
+    await fetch(`/api/recruiters/${recruiter_id}`, { method: "DELETE" });
+    setRecruiters((prev) => prev.filter((r) => r.recruiter_id !== recruiter_id));
+    if (editingRecruiter?.recruiter_id === recruiter_id) closeRecruiterForm();
   }
 
   if (loading) {
@@ -362,17 +454,122 @@ export default function Home() {
             </div>
 
             {/* Recruiter Network */}
-            {recruiters.length > 0 && (
-              <div className="bg-card border border-border rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <Users size={14} className="text-muted" />
-                  <h3 className="text-sm font-semibold">Recruiter Network</h3>
-                  <span className="ml-auto text-xs text-muted">{recruiters.length} contact{recruiters.length !== 1 ? "s" : ""}</span>
-                </div>
+            <div className="bg-card border border-border rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Users size={14} className="text-muted" />
+                <h3 className="text-sm font-semibold">Recruiter Network</h3>
+                <span className="text-xs text-muted ml-1">{recruiters.length} contact{recruiters.length !== 1 ? "s" : ""}</span>
+                <button
+                  onClick={showAddRecruiter && !editingRecruiter ? closeRecruiterForm : openAddRecruiter}
+                  className="ml-auto flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                >
+                  <Plus size={12} />
+                  Add Recruiter
+                </button>
+              </div>
+
+              {/* Add / Edit Recruiter form */}
+              {showAddRecruiter && (
+                <form onSubmit={handleSaveRecruiter} className="mb-4 p-4 rounded-lg bg-background border border-border space-y-3">
+                  <p className="text-xs font-medium text-muted">{editingRecruiter ? "Edit Recruiter" : "New Recruiter"}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-muted mb-1">First Name</label>
+                      <input
+                        value={recruiterForm.first_name}
+                        onChange={(e) => setRecruiterForm({ ...recruiterForm, first_name: e.target.value })}
+                        onBlur={() => setRecruiterTouched({ ...recruiterTouched, first_name: true })}
+                        className={`w-full bg-card border rounded-md px-2.5 py-1.5 text-xs focus:outline-none ${recruiterTouched.first_name && recruiterFieldErrors.first_name ? "border-[var(--danger)]" : "border-border focus:border-accent"}`}
+                        placeholder="First name"
+                      />
+                      {recruiterTouched.first_name && recruiterFieldErrors.first_name && (
+                        <p className="text-[11px] text-[var(--danger)] mt-0.5">{recruiterFieldErrors.first_name}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-muted mb-1">Last Name</label>
+                      <input
+                        value={recruiterForm.last_name}
+                        onChange={(e) => setRecruiterForm({ ...recruiterForm, last_name: e.target.value })}
+                        onBlur={() => setRecruiterTouched({ ...recruiterTouched, last_name: true })}
+                        className={`w-full bg-card border rounded-md px-2.5 py-1.5 text-xs focus:outline-none ${recruiterTouched.last_name && recruiterFieldErrors.last_name ? "border-[var(--danger)]" : "border-border focus:border-accent"}`}
+                        placeholder="Last name"
+                      />
+                      {recruiterTouched.last_name && recruiterFieldErrors.last_name && (
+                        <p className="text-[11px] text-[var(--danger)] mt-0.5">{recruiterFieldErrors.last_name}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={recruiterForm.email}
+                      onChange={(e) => setRecruiterForm({ ...recruiterForm, email: e.target.value })}
+                      onBlur={() => setRecruiterTouched({ ...recruiterTouched, email: true })}
+                      className={`w-full bg-card border rounded-md px-2.5 py-1.5 text-xs focus:outline-none ${recruiterTouched.email && recruiterFieldErrors.email ? "border-[var(--danger)]" : "border-border focus:border-accent"}`}
+                      placeholder="recruiter@company.com"
+                    />
+                    {recruiterTouched.email && recruiterFieldErrors.email && (
+                      <p className="text-[11px] text-[var(--danger)] mt-0.5">{recruiterFieldErrors.email}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Company</label>
+                    <input
+                      value={recruiterForm.company_name}
+                      onChange={(e) => setRecruiterForm({ ...recruiterForm, company_name: e.target.value })}
+                      onBlur={() => setRecruiterTouched({ ...recruiterTouched, company_name: true })}
+                      className={`w-full bg-card border rounded-md px-2.5 py-1.5 text-xs focus:outline-none ${recruiterTouched.company_name && recruiterFieldErrors.company_name ? "border-[var(--danger)]" : "border-border focus:border-accent"}`}
+                      placeholder="Company name"
+                    />
+                    {recruiterTouched.company_name && recruiterFieldErrors.company_name && (
+                      <p className="text-[11px] text-[var(--danger)] mt-0.5">{recruiterFieldErrors.company_name}</p>
+                    )}
+                  </div>
+                  {recruiterError && <p className="text-[11px] text-[var(--danger)]">{recruiterError}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={recruiterSaving}
+                      className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+                    >
+                      {recruiterSaving ? "Saving..." : editingRecruiter ? "Update" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeRecruiterForm}
+                      className="px-3 py-1.5 text-xs text-muted hover:text-foreground border border-border rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {recruiters.length === 0 ? (
+                <p className="text-sm text-muted">No recruiters added yet.</p>
+              ) : (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                   {recruiters.map((r) => (
-                    <div key={r.recruiter_id} className="flex flex-col gap-0.5 p-2.5 rounded-lg bg-background border border-border">
-                      <span className="text-xs font-medium truncate">{r.first_name} {r.last_name}</span>
+                    <div key={r.recruiter_id} className="group relative flex flex-col gap-0.5 p-2.5 rounded-lg bg-background border border-border">
+                      <div className="absolute top-1.5 right-1.5 hidden group-hover:flex gap-1">
+                        <button
+                          onClick={() => openEditRecruiter(r)}
+                          className="p-0.5 text-muted hover:text-accent transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRecruiter(r.recruiter_id)}
+                          className="p-0.5 text-muted hover:text-[var(--danger)] transition-colors"
+                          title="Remove"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                      <span className="text-xs font-medium truncate pr-8">{r.first_name} {r.last_name}</span>
                       <span className="text-[11px] text-muted truncate">{r.company_name}</span>
                       {r.email && (
                         <a href={`mailto:${r.email}`} className="text-[11px] text-accent/80 hover:text-accent truncate transition-colors">
@@ -382,8 +579,8 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ) : (
           /* ===== KANBAN VIEW ===== */

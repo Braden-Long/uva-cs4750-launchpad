@@ -10,6 +10,7 @@ function validateField(name: string, value: string): string {
     case "first_name":
     case "last_name":
       if (!value.trim()) return "Required";
+      if (value.trim().length < 2) return "At least 2 characters";
       if (!/^[a-zA-Z\s'\-]+$/.test(value.trim())) return "Letters only";
       return "";
     case "username":
