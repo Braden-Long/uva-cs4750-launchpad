@@ -11,8 +11,8 @@ export async function PUT(
 
   const { id } = await params;
   const app_number = parseInt(id, 10);
-  const { company_name, job_title, status, date_applied, salary_expectation, notes, tags,
-          job_type, duration_months, equity_offered, sign_on_bonus } =
+  const { company_name, job_title, status, date_applied, salary_expectation, job_url, notes, tags,
+          job_type, duration_months, equity_offered, sign_on_bonus, newDocuments, deletedDocIds } =
     await req.json();
 
   if (company_name) {
@@ -21,7 +21,7 @@ export async function PUT(
 
   await db.query(
     `UPDATE application
-     SET company_name = ?, job_title = ?, status = ?, app_date = ?, salary = ?, notes = ?
+     SET company_name = ?, job_title = ?, status = ?, app_date = ?, salary = ?, notes = ?, job_url = ?
      WHERE username = ? AND app_number = ?`,
     [
       company_name,
@@ -30,6 +30,7 @@ export async function PUT(
       (status === "Saved") ? null : (date_applied || new Date().toISOString().split("T")[0]),
       salary_expectation || null,
       notes || null,
+      job_url || null,
       session.username,
       app_number,
     ]
@@ -62,6 +63,40 @@ export async function PUT(
       "INSERT INTO full_time (username, app_number, equity_offered, sign_on_bonus) VALUES (?, ?, ?, ?)",
       [session.username, app_number, equity_offered || null, sign_on_bonus || null]
     );
+  }
+
+  if (deletedDocIds && deletedDocIds.length > 0) {
+    for (const docId of deletedDocIds as number[]) {
+      await db.query(
+        "DELETE FROM submitted_with WHERE document_id = ? AND username = ? AND app_number = ?",
+        [docId, session.username, app_number]
+      );
+      const [refs] = await db.query(
+        "SELECT COUNT(*) AS cnt FROM submitted_with WHERE document_id = ?",
+        [docId]
+      ) as any[];
+      if (Number((refs as any[])[0].cnt) === 0) {
+        await db.query("DELETE FROM document WHERE document_id = ?", [docId]);
+      }
+    }
+  }
+
+  if (newDocuments && newDocuments.length > 0) {
+    const [docNumRows] = await db.query(
+      "SELECT COALESCE(MAX(document_id), 0) AS max_id FROM document"
+    ) as any[];
+    let nextDocId = Number((docNumRows as any[])[0].max_id) + 1;
+    for (const doc of newDocuments as { title: string; doc_type: string }[]) {
+      await db.query(
+        "INSERT INTO document (document_id, title, doc_type, username) VALUES (?, ?, ?, ?)",
+        [nextDocId, doc.title, doc.doc_type, session.username]
+      );
+      await db.query(
+        "INSERT INTO submitted_with (document_id, username, app_number) VALUES (?, ?, ?)",
+        [nextDocId, session.username, app_number]
+      );
+      nextDocId++;
+    }
   }
 
   return NextResponse.json({ ok: true });

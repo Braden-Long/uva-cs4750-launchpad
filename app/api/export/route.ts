@@ -8,12 +8,17 @@ function toDate(val: unknown): string {
   return String(val).split("T")[0];
 }
 
+function csvField(val: string | null | undefined): string {
+  const s = String(val ?? "").replace(/"/g, '""');
+  return `"${s}"`;
+}
+
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [rows] = await db.query(
-    `SELECT a.app_number, a.company_name, a.job_title, a.app_date, a.status, a.salary, a.notes,
+    `SELECT a.app_number, a.company_name, a.job_title, a.app_date, a.status, a.salary, a.notes, a.job_url,
        GROUP_CONCAT(at.tags ORDER BY at.tags SEPARATOR '|') AS tags
      FROM application a
      LEFT JOIN application_tags at ON a.username = at.username AND a.app_number = at.app_number
@@ -23,19 +28,17 @@ export async function GET() {
     [session.username]
   ) as any[];
 
-  const header = "Company,Title,Status,Date Applied,Salary,Notes,Tags";
-  const csvRows = (rows as any[]).map((r) => {
-    const notes = String(r.notes ?? "").replace(/"/g, '""');
-    return [
-      r.company_name ?? "",
-      r.job_title ?? "",
-      r.status === "Offered" ? "Offer" : (r.status ?? ""),
-      toDate(r.app_date),
-      r.salary ?? "",
-      `"${notes}"`,
-      r.tags ?? "",
-    ].join(",");
-  });
+  const header = "Company,Title,Status,Date Applied,Salary,Notes,Tags,Job URL";
+  const csvRows = (rows as any[]).map((r) => [
+    csvField(r.company_name),
+    csvField(r.job_title),
+    csvField(r.status === "Offered" ? "Offer" : r.status),
+    csvField(toDate(r.app_date)),
+    r.salary ?? "",
+    csvField(r.notes),
+    csvField(r.tags),
+    csvField(r.job_url),
+  ].join(","));
 
   const csv = [header, ...csvRows].join("\n");
 

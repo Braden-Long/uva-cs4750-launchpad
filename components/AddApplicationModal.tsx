@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Application, Status, STATUSES } from "@/lib/mock-data";
-import { X, Link, Plus, CalendarDays, FileText, Trash2 } from "lucide-react";
+import { X, Link, Plus, CalendarDays, FileText, Trash2, Paperclip } from "lucide-react";
 
 type FormData = Omit<Application, "id">;
 
@@ -79,6 +79,11 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
   const [showAddInterview, setShowAddInterview] = useState(false);
   const [interviewForm, setInterviewForm] = useState({ interview_date: "", interview_type: "Phone Screen", custom_type: "" });
   const [interviewSaving, setInterviewSaving] = useState(false);
+  const [existingDocs, setExistingDocs] = useState<{ document_id: number; title: string; doc_type: string }[]>([]);
+  const [newDocs, setNewDocs] = useState<{ title: string; doc_type: string }[]>([]);
+  const [deletedDocIds, setDeletedDocIds] = useState<number[]>([]);
+  const [docTitle, setDocTitle] = useState("");
+  const [docType, setDocType] = useState("Resume");
   const datePickerRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -98,6 +103,9 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
         });
         setTags(editApp.tags);
         setDateInput(editApp.status === "Saved" ? "" : isoToDisplay(editApp.date_applied));
+        setExistingDocs(editApp.documents ?? []);
+        setNewDocs([]);
+        setDeletedDocIds([]);
         fetch(`/api/applications/${editApp.id}/interviews`)
           .then((r) => r.json())
           .then(setInterviews)
@@ -107,6 +115,9 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
         setTags([]);
         setDateInput("");
         setInterviews([]);
+        setExistingDocs([]);
+        setNewDocs([]);
+        setDeletedDocIds([]);
       }
       setTagInput("");
       setShowAddInterview(false);
@@ -149,7 +160,9 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
       duration_months: form.job_type === "Internship" ? (Number(form.duration_months) || null) : null,
       equity_offered: form.job_type === "Full-time" ? (form.equity_offered || null) : null,
       sign_on_bonus: form.job_type === "Full-time" ? (Number(form.sign_on_bonus) || null) : null,
-      documents: editApp?.documents ?? [],
+      documents: existingDocs,
+      newDocuments: newDocs,
+      deletedDocIds,
     });
     setSaving(false);
     onClose();
@@ -187,15 +200,15 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-xl w-full max-w-lg p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
+      <div className="relative bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-6 pb-0 shrink-0">
           <h2 className="text-lg font-semibold">{isEdit ? "Edit Application" : "Add Application"}</h2>
           <button onClick={onClose} className="text-muted hover:text-foreground transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6 pt-5">
           <div>
             <label className="block text-xs text-muted mb-1.5">Job URL</label>
             <div className="relative">
@@ -397,20 +410,91 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
             </div>
           </div>
 
-          {isEdit && editApp?.documents && editApp.documents.length > 0 && (
-            <div>
-              <label className="block text-xs text-muted mb-1.5">Submitted Documents</label>
-              <div className="flex flex-wrap gap-1.5">
-                {editApp.documents.map((doc, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-zinc-500/15 text-zinc-400">
-                    <FileText size={10} />
-                    {doc.title}
-                    <span className="text-zinc-500">· {doc.doc_type}</span>
-                  </span>
-                ))}
-              </div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-muted flex items-center gap-1">
+                <Paperclip size={11} />
+                Documents
+              </label>
             </div>
-          )}
+            <div className="space-y-1 mb-2">
+              {existingDocs.map((doc) => (
+                <div key={doc.document_id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-background border border-border text-xs">
+                  <div className="flex items-center gap-2">
+                    <FileText size={11} className="text-muted" />
+                    <span className="font-medium">{doc.title}</span>
+                    <span className="text-muted">· {doc.doc_type}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExistingDocs((prev) => prev.filter((d) => d.document_id !== doc.document_id));
+                      setDeletedDocIds((prev) => [...prev, doc.document_id]);
+                    }}
+                    className="text-muted hover:text-[var(--danger)] transition-colors"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+              {newDocs.map((doc, i) => (
+                <div key={`new-${i}`} className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-accent/5 border border-accent/20 text-xs">
+                  <div className="flex items-center gap-2">
+                    <FileText size={11} className="text-accent/60" />
+                    <span className="font-medium">{doc.title}</span>
+                    <span className="text-muted">· {doc.doc_type}</span>
+                    <span className="text-accent/50 text-[10px]">new</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewDocs((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="text-muted hover:text-[var(--danger)] transition-colors"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={docTitle}
+                onChange={(e) => setDocTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && docTitle.trim()) {
+                    e.preventDefault();
+                    setNewDocs((prev) => [...prev, { title: docTitle.trim(), doc_type: docType }]);
+                    setDocTitle("");
+                  }
+                }}
+                placeholder="Document title"
+                className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
+              />
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent"
+              >
+                <option>Resume</option>
+                <option>Cover Letter</option>
+                <option>CV</option>
+                <option>Portfolio</option>
+                <option>Other</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  if (docTitle.trim()) {
+                    setNewDocs((prev) => [...prev, { title: docTitle.trim(), doc_type: docType }]);
+                    setDocTitle("");
+                  }
+                }}
+                className="px-2 py-1.5 bg-background border border-border rounded-lg text-muted hover:text-foreground hover:border-accent/40 transition-colors"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
 
           {isEdit && (
             <div>

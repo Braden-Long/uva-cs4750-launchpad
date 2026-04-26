@@ -17,11 +17,11 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [rows] = await db.query(
-    `SELECT a.app_number, a.company_name, a.job_title, a.app_date, a.status, a.salary, a.notes,
+    `SELECT a.app_number, a.company_name, a.job_title, a.app_date, a.status, a.salary, a.notes, a.job_url,
        GROUP_CONCAT(DISTINCT at.tags ORDER BY at.tags SEPARATOR ',') AS tags,
        i.duration_months,
        f.equity_offered, f.sign_on_bonus,
-       GROUP_CONCAT(DISTINCT CONCAT(d.title, ':::', d.doc_type) ORDER BY d.document_id SEPARATOR '|') AS documents
+       GROUP_CONCAT(DISTINCT CONCAT(d.document_id, ':::', d.title, ':::', d.doc_type) ORDER BY d.document_id SEPARATOR '|') AS documents
      FROM application a
      LEFT JOIN application_tags at ON a.username = at.username AND a.app_number = at.app_number
      LEFT JOIN internship i ON a.username = i.username AND a.app_number = i.app_number
@@ -42,7 +42,7 @@ export async function GET() {
     status: toFrontendStatus(row.status ?? "Saved"),
     date_applied: toDate(row.app_date),
     salary_expectation: Number(row.salary) || 0,
-    job_url: "",
+    job_url: row.job_url ?? "",
     notes: row.notes ?? "",
     tags: row.tags ? row.tags.split(",") : [],
     job_type: row.duration_months != null ? "Internship" : row.equity_offered != null ? "Full-time" : null,
@@ -51,8 +51,8 @@ export async function GET() {
     sign_on_bonus: row.sign_on_bonus != null ? Number(row.sign_on_bonus) : null,
     documents: row.documents
       ? row.documents.split("|").map((d: string) => {
-          const [title, doc_type] = d.split(":::");
-          return { title: title ?? "", doc_type: doc_type ?? "" };
+          const [document_id, title, doc_type] = d.split(":::");
+          return { document_id: Number(document_id), title: title ?? "", doc_type: doc_type ?? "" };
         })
       : [],
   }));
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { company_name, job_title, status, date_applied, salary_expectation, notes, tags,
-          job_type, duration_months, equity_offered, sign_on_bonus } =
+  const { company_name, job_title, status, date_applied, salary_expectation, job_url, notes, tags,
+          job_type, duration_months, equity_offered, sign_on_bonus, newDocuments } =
     await req.json();
 
   // Next app_number for this user
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
   await db.query("INSERT IGNORE INTO company (company_name) VALUES (?)", [company_name]);
 
   await db.query(
-    `INSERT INTO application (username, app_number, company_name, job_title, app_date, status, salary, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO application (username, app_number, company_name, job_title, app_date, status, salary, notes, job_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       session.username,
       next_num,
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
       status || "Saved",
       salary_expectation || null,
       notes || null,
+      job_url || null,
     ]
   );
 
@@ -111,6 +112,24 @@ export async function POST(req: NextRequest) {
       "INSERT IGNORE INTO full_time (username, app_number, equity_offered, sign_on_bonus) VALUES (?, ?, ?, ?)",
       [session.username, next_num, equity_offered || null, sign_on_bonus || null]
     );
+  }
+
+  if (newDocuments && newDocuments.length > 0) {
+    const [docNumRows] = await db.query(
+      "SELECT COALESCE(MAX(document_id), 0) AS max_id FROM document"
+    ) as any[];
+    let nextDocId = Number((docNumRows as any[])[0].max_id) + 1;
+    for (const doc of newDocuments as { title: string; doc_type: string }[]) {
+      await db.query(
+        "INSERT INTO document (document_id, title, doc_type, username) VALUES (?, ?, ?, ?)",
+        [nextDocId, doc.title, doc.doc_type, session.username]
+      );
+      await db.query(
+        "INSERT INTO submitted_with (document_id, username, app_number) VALUES (?, ?, ?)",
+        [nextDocId, session.username, next_num]
+      );
+      nextDocId++;
+    }
   }
 
   return NextResponse.json(

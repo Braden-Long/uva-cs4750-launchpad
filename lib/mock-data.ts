@@ -14,7 +14,9 @@ export interface Application {
   duration_months?: number | null;
   equity_offered?: string | null;
   sign_on_bonus?: number | null;
-  documents?: { title: string; doc_type: string }[];
+  documents?: { document_id: number; title: string; doc_type: string }[];
+  newDocuments?: { title: string; doc_type: string }[];
+  deletedDocIds?: number[];
 }
 
 export interface User {

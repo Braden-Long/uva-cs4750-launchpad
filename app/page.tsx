@@ -152,21 +152,14 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      setApplications((prev) =>
-        prev.map((a) => (a.id === editApp.id ? { ...a, ...data } : a))
-      );
     } else {
-      const res = await fetch("/api/applications", {
+      await fetch("/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (res.ok) {
-        const newApp: Application = await res.json();
-        setApplications((prev) => [newApp, ...prev]);
-      }
     }
-    fetch("/api/dashboard").then((r) => r.json()).then(setStats);
+    await fetchData();
     setEditApp(null);
   }
 
