@@ -2,10 +2,6 @@
 
 A visual job application tracker built for UVA CS 4750. Replaces the typical spreadsheet with a dashboard and Kanban board backed by a MySQL database.
 
-## Live Demo
-
-Deployed on Google Cloud Run: [https://launchpad-548555929478.us-east4.run.app](https://launchpad-548555929478.us-east4.run.app)
-
 ## Running Locally
 
 Requires a `.env.local` file with valid database credentials and a JWT secret:
@@ -31,9 +27,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deployment
 
-The app is containerized with Docker and deployed to Google Cloud Run. The database is hosted on Google Cloud SQL (MySQL 8.0) in the `us-east4` region.
+The app is no longer hosted — the Cloud Run deployment and its Cloud SQL
+database have been torn down, so there is no live instance to visit.
 
-To deploy a new version:
+It was containerized with Docker and deployed to Google Cloud Run, with the
+database on Google Cloud SQL (MySQL 8.0) in the `us-east4` region. The steps
+below are kept for reference if it is ever stood back up:
 
 ```bash
 # 1. Build the image for linux/amd64 (required for Cloud Run)
