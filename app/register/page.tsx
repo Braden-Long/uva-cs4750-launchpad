@@ -5,14 +5,53 @@ import { useRouter } from "next/navigation";
 import { Rocket } from "lucide-react";
 import Link from "next/link";
 
+function validateField(name: string, value: string): string {
+  switch (name) {
+    case "first_name":
+    case "last_name":
+      if (!value.trim()) return "Required";
+      if (!/^[a-zA-Z\s'\-]+$/.test(value.trim())) return "Letters only";
+      return "";
+    case "username":
+      if (!value.trim()) return "Required";
+      if (!/^[a-zA-Z0-9_]+$/.test(value)) return "Letters, numbers, and underscores only";
+      if (value.length < 3) return "At least 3 characters";
+      return "";
+    case "password":
+      if (!value) return "Required";
+      if (value.length < 6) return "At least 6 characters";
+      if (!/[a-zA-Z]/.test(value)) return "Must include at least one letter";
+      if (!/[0-9]/.test(value)) return "Must include at least one number";
+      return "";
+    default:
+      return "";
+  }
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({ username: "", first_name: "", last_name: "", password: "" });
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const fieldErrors = Object.fromEntries(
+    Object.keys(form).map((k) => [k, validateField(k, form[k as keyof typeof form])])
+  );
+  const isValid = Object.values(fieldErrors).every((e) => e === "");
+
+  function handleChange(name: string, value: string) {
+    setForm({ ...form, [name]: value });
+  }
+
+  function handleBlur(name: string) {
+    setTouched({ ...touched, [name]: true });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setTouched({ first_name: true, last_name: true, username: true, password: true });
+    if (!isValid) return;
     setLoading(true);
     setError("");
     const res = await fetch("/api/auth/register", {
@@ -30,6 +69,13 @@ export default function RegisterPage() {
     }
   }
 
+  function fieldClass(name: string) {
+    const hasError = touched[name] && fieldErrors[name];
+    return `w-full bg-background border rounded-lg px-3 py-2 text-sm focus:outline-none ${
+      hasError ? "border-[var(--danger)] focus:border-[var(--danger)]" : "border-border focus:border-accent"
+    }`;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -45,50 +91,64 @@ export default function RegisterPage() {
               <div>
                 <label className="block text-xs text-muted mb-1.5">First Name</label>
                 <input
-                  required
                   value={form.first_name}
-                  onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                  placeholder="John"
+                  onChange={(e) => handleChange("first_name", e.target.value)}
+                  onBlur={() => handleBlur("first_name")}
+                  className={fieldClass("first_name")}
+                  placeholder="First name"
                 />
+                {touched.first_name && fieldErrors.first_name && (
+                  <p className="text-xs text-[var(--danger)] mt-1">{fieldErrors.first_name}</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-muted mb-1.5">Last Name</label>
                 <input
-                  required
                   value={form.last_name}
-                  onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                  placeholder="Doe"
+                  onChange={(e) => handleChange("last_name", e.target.value)}
+                  onBlur={() => handleBlur("last_name")}
+                  className={fieldClass("last_name")}
+                  placeholder="Last name"
                 />
+                {touched.last_name && fieldErrors.last_name && (
+                  <p className="text-xs text-[var(--danger)] mt-1">{fieldErrors.last_name}</p>
+                )}
               </div>
             </div>
             <div>
               <label className="block text-xs text-muted mb-1.5">Username</label>
               <input
-                required
                 value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                placeholder="jdoe"
+                onChange={(e) => handleChange("username", e.target.value)}
+                onBlur={() => handleBlur("username")}
+                className={fieldClass("username")}
+                placeholder="Choose a username"
               />
+              {touched.username && fieldErrors.username && (
+                <p className="text-xs text-[var(--danger)] mt-1">{fieldErrors.username}</p>
+              )}
             </div>
             <div>
               <label className="block text-xs text-muted mb-1.5">Password</label>
               <input
-                required
                 type="password"
                 value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                onChange={(e) => handleChange("password", e.target.value)}
+                onBlur={() => handleBlur("password")}
+                className={fieldClass("password")}
                 placeholder="••••••••"
               />
+              {touched.password && fieldErrors.password ? (
+                <p className="text-xs text-[var(--danger)] mt-1">{fieldErrors.password}</p>
+              ) : (
+                <p className="text-xs text-muted mt-1">Min. 6 characters, at least one letter and one number</p>
+              )}
             </div>
             {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              className="w-full py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Creating account..." : "Create account"}
             </button>

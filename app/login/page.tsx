@@ -11,8 +11,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const isValid = form.username.trim().length > 0 && form.password.length > 0;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isValid) return;
     setLoading(true);
     setError("");
     const res = await fetch("/api/auth/login", {
@@ -48,7 +51,7 @@ export default function LoginPage() {
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-                placeholder="jdoe"
+                placeholder="Username"
               />
             </div>
             <div>
@@ -65,8 +68,8 @@ export default function LoginPage() {
             {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              disabled={loading || !isValid}
+              className="w-full py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
