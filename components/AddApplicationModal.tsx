@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Application, Status, STATUSES } from "@/lib/mock-data";
-import { X, Sparkles, Link, Plus, CalendarDays, FileText } from "lucide-react";
+import { X, Link, Plus, CalendarDays, FileText } from "lucide-react";
 
 type FormData = Omit<Application, "id">;
 
@@ -50,7 +50,6 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [dateInput, setDateInput] = useState("");
-  const [autoFilling, setAutoFilling] = useState(false);
   const [saving, setSaving] = useState(false);
   const datePickerRef = useRef<HTMLInputElement>(null);
 
@@ -122,19 +121,6 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
     onClose();
   }
 
-  function handleAutoFill() {
-    setAutoFilling(true);
-    setTimeout(() => {
-      setForm((f) => ({
-        ...f,
-        company_name: f.company_name || "Acme Corp",
-        job_title: f.job_title || "Software Engineer",
-        salary_expectation: f.salary_expectation || "140000",
-      }));
-      setAutoFilling(false);
-    }, 1500);
-  }
-
   const isEdit = !!editApp;
   const pickerValue = dateInput.length === 10 ? displayToISO(dateInput) : todayISO;
 
@@ -152,28 +138,15 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs text-muted mb-1.5">Job URL</label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Link size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                <input
-                  type="url"
-                  value={form.job_url}
-                  onChange={(e) => setForm({ ...form, job_url: e.target.value })}
-                  placeholder="https://company.com/jobs/..."
-                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
-                />
-              </div>
-              {!isEdit && (
-                <button
-                  type="button"
-                  onClick={handleAutoFill}
-                  disabled={autoFilling}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
-                >
-                  <Sparkles size={13} className={autoFilling ? "animate-spin" : ""} />
-                  {autoFilling ? "Fetching..." : "Auto-fill from URL"}
-                </button>
-              )}
+            <div className="relative">
+              <Link size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="url"
+                value={form.job_url}
+                onChange={(e) => setForm({ ...form, job_url: e.target.value })}
+                placeholder="https://company.com/jobs/..."
+                className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:border-accent"
+              />
             </div>
           </div>
 
