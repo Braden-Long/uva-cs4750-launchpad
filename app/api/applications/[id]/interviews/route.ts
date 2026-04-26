@@ -22,7 +22,11 @@ export async function GET(
 
   return NextResponse.json((rows as any[]).map((r) => ({
     interview_round: r.interview_round,
-    interview_date: r.interview_date ? String(r.interview_date).split("T")[0] : null,
+    interview_date: r.interview_date
+      ? (r.interview_date instanceof Date
+          ? r.interview_date.toISOString().split("T")[0]
+          : String(r.interview_date).split("T")[0])
+      : null,
     interview_type: r.interview_type,
   })));
 }
