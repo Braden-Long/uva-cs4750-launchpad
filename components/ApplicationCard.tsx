@@ -1,6 +1,6 @@
 "use client";
 
-import { Application, STATUS_COLORS } from "@/lib/mock-data";
+import { Application, STATUS_COLORS } from "@/lib/types";
 import { Calendar, DollarSign, ExternalLink, Pencil, Trash2 } from "lucide-react";
 
 interface ApplicationCardProps {

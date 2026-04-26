@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { X, Upload, Trash2, FileJson, FileSpreadsheet } from "lucide-react";
-import { Application } from "@/lib/mock-data";
+import { Application } from "@/lib/types";
 
 interface SettingsPanelProps {
   open: boolean;

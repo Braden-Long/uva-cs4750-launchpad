@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Application, Status, STATUSES } from "@/lib/mock-data";
+import { Application, Status, STATUSES } from "@/lib/types";
 import { X, Link, Plus, CalendarDays, FileText, Trash2, Paperclip } from "lucide-react";
 
 type FormData = Omit<Application, "id">;

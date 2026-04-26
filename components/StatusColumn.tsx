@@ -1,6 +1,6 @@
 "use client";
 
-import { Application, Status, STATUS_COLORS } from "@/lib/mock-data";
+import { Application, Status, STATUS_COLORS } from "@/lib/types";
 import ApplicationCard from "./ApplicationCard";
 
 interface StatusColumnProps {

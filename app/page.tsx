@@ -6,7 +6,7 @@ import {
   Rocket, Plus, Search, ArrowUpDown, BarChart3, Kanban,
   Settings, Briefcase, TrendingUp, Clock, CalendarDays, LogOut, Users, Pencil, Trash2,
 } from "lucide-react";
-import { Application, Status, STATUSES, STATUS_COLORS } from "@/lib/mock-data";
+import { Application, Status, STATUSES, STATUS_COLORS } from "@/lib/types";
 import StatusColumn from "@/components/StatusColumn";
 import AddApplicationModal from "@/components/AddApplicationModal";
 import SettingsPanel from "@/components/SettingsPanel";
