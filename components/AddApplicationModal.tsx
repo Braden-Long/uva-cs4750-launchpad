@@ -2,9 +2,33 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Application, Status, STATUSES } from "@/lib/mock-data";
-import { X, Link, Plus, CalendarDays, FileText } from "lucide-react";
+import { X, Link, Plus, CalendarDays, FileText, Trash2 } from "lucide-react";
 
 type FormData = Omit<Application, "id">;
+
+interface Interview {
+  interview_round: number;
+  interview_date: string | null;
+  interview_type: string;
+}
+
+const INTERVIEW_TYPES = [
+  "Phone Screen",
+  "Recruiter Screen",
+  "Behavioral",
+  "Technical Phone",
+  "Online Assessment",
+  "Take-home Assignment",
+  "Coding",
+  "System Design",
+  "Technical Assessment",
+  "On-site (Virtual)",
+  "On-site (In-person)",
+  "Hiring Manager",
+  "Final Panel",
+  "Offer Chat",
+  "Other",
+];
 
 interface AddApplicationModalProps {
   open: boolean;
@@ -51,6 +75,10 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
   const [tagInput, setTagInput] = useState("");
   const [dateInput, setDateInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [showAddInterview, setShowAddInterview] = useState(false);
+  const [interviewForm, setInterviewForm] = useState({ interview_date: "", interview_type: "Phone Screen", custom_type: "" });
+  const [interviewSaving, setInterviewSaving] = useState(false);
   const datePickerRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,14 +97,20 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
           sign_on_bonus: editApp.sign_on_bonus ? String(editApp.sign_on_bonus) : "",
         });
         setTags(editApp.tags);
-        // Saved apps have NULL date in DB (API returns today as fallback), show empty so placeholder appears
         setDateInput(editApp.status === "Saved" ? "" : isoToDisplay(editApp.date_applied));
+        fetch(`/api/applications/${editApp.id}/interviews`)
+          .then((r) => r.json())
+          .then(setInterviews)
+          .catch(() => setInterviews([]));
       } else {
         setForm(empty);
         setTags([]);
         setDateInput("");
+        setInterviews([]);
       }
       setTagInput("");
+      setShowAddInterview(false);
+      setInterviewForm({ interview_date: "", interview_type: "Phone Screen", custom_type: "" });
     }
   }, [open, editApp]);
 
@@ -119,6 +153,32 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
     });
     setSaving(false);
     onClose();
+  }
+
+  async function handleAddInterview() {
+    const type = interviewForm.interview_type === "Other" ? interviewForm.custom_type.trim() : interviewForm.interview_type;
+    if (!type) return;
+    setInterviewSaving(true);
+    try {
+      const res = await fetch(`/api/applications/${editApp!.id}/interviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interview_date: interviewForm.interview_date || null, interview_type: type }),
+      });
+      if (res.ok) {
+        const newInterview = await res.json();
+        setInterviews((prev) => [...prev, newInterview]);
+        setInterviewForm({ interview_date: "", interview_type: "Phone Screen", custom_type: "" });
+        setShowAddInterview(false);
+      }
+    } finally {
+      setInterviewSaving(false);
+    }
+  }
+
+  async function handleDeleteInterview(round: number) {
+    await fetch(`/api/applications/${editApp!.id}/interviews/${round}`, { method: "DELETE" });
+    setInterviews((prev) => prev.filter((i) => i.interview_round !== round));
   }
 
   const isEdit = !!editApp;
@@ -349,6 +409,106 @@ export default function AddApplicationModal({ open, onClose, onSave, editApp }: 
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {isEdit && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs text-muted">
+                  Interviews
+                  {interviews.length > 0 && <span className="ml-1">({interviews.length})</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddInterview((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+                >
+                  <Plus size={11} />
+                  Add Round
+                </button>
+              </div>
+
+              {showAddInterview && (
+                <div className="mb-2 p-3 rounded-lg bg-background border border-border space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-muted mb-1">Type</label>
+                      <select
+                        value={interviewForm.interview_type}
+                        onChange={(e) => setInterviewForm({ ...interviewForm, interview_type: e.target.value, custom_type: "" })}
+                        className="w-full bg-card border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-accent"
+                      >
+                        {INTERVIEW_TYPES.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-muted mb-1">Date</label>
+                      <input
+                        type="date"
+                        value={interviewForm.interview_date}
+                        onChange={(e) => setInterviewForm({ ...interviewForm, interview_date: e.target.value })}
+                        className="w-full bg-card border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                  </div>
+                  {interviewForm.interview_type === "Other" && (
+                    <input
+                      type="text"
+                      value={interviewForm.custom_type}
+                      onChange={(e) => setInterviewForm({ ...interviewForm, custom_type: e.target.value })}
+                      placeholder="Describe the interview type"
+                      className="w-full bg-card border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-accent"
+                    />
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddInterview}
+                      disabled={interviewSaving || (interviewForm.interview_type === "Other" && !interviewForm.custom_type.trim())}
+                      className="px-3 py-1 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+                    >
+                      {interviewSaving ? "Saving..." : "Add"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddInterview(false)}
+                      className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {interviews.length === 0 && !showAddInterview ? (
+                <p className="text-xs text-muted/60">No interviews logged yet.</p>
+              ) : (
+                <div className="space-y-1">
+                  {interviews.map((iv) => (
+                    <div key={iv.interview_round} className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-background border border-border text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted/60">R{iv.interview_round}</span>
+                        <span className="font-medium">{iv.interview_type}</span>
+                        {iv.interview_date && (
+                          <span className="text-muted">
+                            {new Date(iv.interview_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteInterview(iv.interview_round)}
+                        className="text-muted hover:text-[var(--danger)] transition-colors"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
