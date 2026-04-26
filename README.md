@@ -18,6 +18,10 @@ DB_NAME=launchpad-db
 JWT_SECRET=<your-secret>
 ```
 
+`JWT_SECRET` must be at least 32 characters. It is required — there is no
+built-in default, and signing or verifying a session throws if it is unset, so
+the same variable must be set on the Cloud Run service (see Deployment below).
+
 ```bash
 npm install
 npm run dev
